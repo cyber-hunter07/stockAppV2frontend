@@ -14,6 +14,13 @@ const PROFILE_FIELDS = [
   ["email", "Email"],
 ];
 
+const readSignature = (file) => new Promise((resolve, reject) => {
+  if (!file) return resolve("");
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) return reject(new Error("Choose a PNG, JPG, or WebP signature image."));
+  if (file.size > 1024 * 1024) return reject(new Error("Signature image must be 1 MB or smaller."));
+  const reader = new FileReader(); reader.onerror = () => reject(new Error("Could not read signature image.")); reader.onload = () => resolve(reader.result); reader.readAsDataURL(file);
+});
+
 export function CompanyProfilePage() {
   const [profile, setProfile] = useState(null);
   const [message, setMessage] = useState("");
@@ -38,6 +45,7 @@ export function CompanyProfilePage() {
         {PROFILE_FIELDS.map(([key, label]) => (
           <label key={key}>{label}<input value={profile[key] || ""} onChange={(event) => setProfile({ ...profile, [key]: event.target.value })} /></label>
         ))}
+        <fieldset className="signature-settings"><legend>PDF signatures — Administrator only</legend><p>These signatures appear with the Principal and HOD captions whenever Scrap / Dead Stock is printed or saved as PDF.</p>{[["principalSignature", "Principal signature"], ["hodSignature", "HOD signature"]].map(([key, label]) => <label key={key}>{label}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={async (event) => { try { const value = await readSignature(event.target.files?.[0]); setProfile({ ...profile, [key]: value }); setMessage(""); } catch (error) { event.target.value = ""; setMessage(error.message); } }} />{profile[key] && <span className="signature-preview"><img src={profile[key]} alt={label} /> <button type="button" className="btn-outline" onClick={() => setProfile({ ...profile, [key]: "" })}>Remove</button></span>}</label>)}</fieldset>
         <div className="admin-form-actions"><button className="primary-btn" type="submit">Save Profile</button>{message && <span className="msg">{message}</span>}</div>
       </form>
     </div>

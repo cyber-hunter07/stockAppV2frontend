@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   addConsumable, addMaintenance, addPowerUnit, addQuotation, deletePowerUnit, deleteQuotation, downloadCsv,
   deleteAssetCode, distributeAssets, getAssetCodes, getConsumables,
-  getDepartments, getEquipment, getLegacyStock, getLocations, getMaintenance, getPowerUnits, getPurchases, getQuotations, getScrapList, getScrapRequests, getStockMovements,
+  getCompanyProfile, getDepartments, getEquipment, getLegacyStock, getLocations, getMaintenance, getPowerUnits, getPurchases, getQuotations, getScrapList, getScrapRequests, getStockMovements,
   getVendors, reviewScrapRequest, stockMoveAssets, submitScrapRequest, transferAssets, updateAssetCode, updateConsumable,
   updateMaintenance, updatePowerUnit, updateQuotation,
 } from "../api";
@@ -12,6 +12,14 @@ import ReportActions from "./ReportActions";
 
 const money = (value) => `₹${(Number(value) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const date = (value) => value ? new Date(value).toLocaleDateString("en-GB") : "—";
+const ACCEPTED_DOCUMENT_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+const readAttachment = (file, label) => new Promise((resolve, reject) => {
+  if (!file) return resolve(undefined);
+  if (!ACCEPTED_DOCUMENT_TYPES.includes(file.type)) return reject(new Error(label + " must be a PDF, JPG, PNG, or WebP file."));
+  if (file.size > 2 * 1024 * 1024) return reject(new Error(label + " must be 2 MB or smaller."));
+  const reader = new FileReader(); reader.onerror = () => reject(new Error("Could not read " + label.toLowerCase() + "."));
+  reader.onload = () => resolve({ name: file.name, mimeType: file.type, dataUrl: reader.result }); reader.readAsDataURL(file);
+});
 
 export function AssetCodesPage() {
   const { user } = useAuth();
@@ -222,21 +230,22 @@ export function QuotationsPage() {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [items, setItems] = useState([{ itemName: "", specifications: "", qty: 1 }]);
-  const [form, setForm] = useState({ vendor: "", requestDate: new Date().toISOString().slice(0, 10), replyRequiredBy: "", paymentTerms: "", deliveryTerms: "", warrantyExpected: "", additionalNotes: "" });
+  const [form, setForm] = useState({ vendor: "", requestDate: new Date().toISOString().slice(0, 10), replyRequiredBy: "", paymentTerms: "", deliveryTerms: "", warrantyExpected: "", additionalNotes: "", billAttachment: undefined });
   const load = () => Promise.all([getQuotations(), getVendors()]).then(([requests, vendorList]) => { setRows(requests); setVendors(vendorList); });
   useEffect(() => { load(); }, []);
-  const submit = async (event) => { event.preventDefault(); try { await addQuotation({ ...form, replyRequiredBy: form.replyRequiredBy || undefined, items: items.map((item) => ({ ...item, qty: Number(item.qty) })) }); setOpen(false); setItems([{ itemName: "", specifications: "", qty: 1 }]); setMessage("Quotation request created."); load(); } catch (e) { setMessage(e.response?.data?.error || "Could not create quotation request."); } };
+  const submit = async (event) => { event.preventDefault(); try { await addQuotation({ ...form, replyRequiredBy: form.replyRequiredBy || undefined, items: items.map((item) => ({ ...item, qty: Number(item.qty) })) }); setOpen(false); setForm({ vendor: "", requestDate: new Date().toISOString().slice(0, 10), replyRequiredBy: "", paymentTerms: "", deliveryTerms: "", warrantyExpected: "", additionalNotes: "", billAttachment: undefined }); setItems([{ itemName: "", specifications: "", qty: 1 }]); setMessage("Quotation request created."); load(); } catch (e) { setMessage(e.response?.data?.error || "Could not create quotation request."); } };
   const statusChange = async (row, status) => { try { await updateQuotation(row._id, { status }); load(); } catch (e) { setMessage(e.response?.data?.error || "Could not update request."); } };
   const remove = async (row) => { if (!window.confirm(`Delete quotation ${row.reference}?`)) return; try { await deleteQuotation(row._id); load(); } catch (e) { setMessage(e.response?.data?.error || "Could not delete request."); } };
   return <>
     <div className="panel"><div className="list-header"><h2>📝 Quotation Requests</h2><button className="primary-btn" onClick={() => setOpen(true)}>＋ New Request</button></div>{message && <p className="msg">{message}</p>}
-      <table><thead><tr><th>Reference</th><th>Date</th><th>Vendor</th><th>Items</th><th>Reply by</th><th>Status</th>{user?.role === "Administrator" && <th>Actions</th>}</tr></thead>
-        <tbody>{rows.map((row) => <tr key={row._id}><td><span className="badge-code">{row.reference}</span></td><td>{date(row.requestDate)}</td><td>{row.vendor?.companyName || "—"}</td><td>{row.items?.map((item) => `${item.itemName} (${item.qty})`).join(", ")}</td><td>{date(row.replyRequiredBy)}</td><td><select value={row.status} onChange={(e) => statusChange(row, e.target.value)}><option value="pending">Pending</option><option value="received">Received</option><option value="closed">Closed</option></select></td>{user?.role === "Administrator" && <td><button className="icon-action danger-action" onClick={() => remove(row)} title="Delete">×</button></td>}</tr>)}
-          {rows.length === 0 && <tr><td colSpan={user?.role === "Administrator" ? 7 : 6}>No quotation requests yet.</td></tr>}</tbody></table></div>
+      <table><thead><tr><th>Reference</th><th>Date</th><th>Vendor</th><th>Items</th><th>Reply by</th><th>Bill</th><th>Status</th>{user?.role === "Administrator" && <th>Actions</th>}</tr></thead>
+        <tbody>{rows.map((row) => <tr key={row._id}><td><span className="badge-code">{row.reference}</span></td><td>{date(row.requestDate)}</td><td>{row.vendor?.companyName || "—"}</td><td>{row.items?.map((item) => `${item.itemName} (${item.qty})`).join(", ")}</td><td>{date(row.replyRequiredBy)}</td><td>{row.billAttachment?.dataUrl ? <a href={row.billAttachment.dataUrl} target="_blank" rel="noreferrer">View bill</a> : "—"}</td><td><select value={row.status} onChange={(e) => statusChange(row, e.target.value)}><option value="pending">Pending</option><option value="received">Received</option><option value="closed">Closed</option></select></td>{user?.role === "Administrator" && <td><button className="icon-action danger-action" onClick={() => remove(row)} title="Delete">×</button></td>}</tr>)}
+          {rows.length === 0 && <tr><td colSpan={user?.role === "Administrator" ? 8 : 7}>No quotation requests yet.</td></tr>}</tbody></table></div>
     {open && <Modal title="New Quotation Request" icon="📝" onClose={() => setOpen(false)}><form className="modal-form" onSubmit={submit}>
       <label>Vendor *</label><select required value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })}><option value="">Select vendor</option>{vendors.map((v) => <option key={v._id} value={v._id}>{v.companyName}</option>)}</select>
       <label>Request date *</label><input type="date" required value={form.requestDate} onChange={(e) => setForm({ ...form, requestDate: e.target.value })} />
       <label>Reply required by</label><input type="date" value={form.replyRequiredBy} onChange={(e) => setForm({ ...form, replyRequiredBy: e.target.value })} />
+      <label>Bill / supporting document <small>PDF, JPG, PNG, or WebP · max 2 MB</small><input type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={async (e) => { try { setForm({ ...form, billAttachment: await readAttachment(e.target.files?.[0], "Bill attachment") }); setMessage(""); } catch (error) { e.target.value = ""; setMessage(error.message); } }} />{form.billAttachment && <span className="attachment-name">Attached: {form.billAttachment.name}</span>}</label>
       <label>Requested items *</label>{items.map((item, index) => <div className="quotation-item-row" key={index}>
         <input aria-label={`Item ${index + 1} name`} placeholder="Item name" maxLength="160" required value={item.itemName} onChange={(e) => setItems((current) => current.map((row, i) => i === index ? { ...row, itemName: e.target.value } : row))} />
         <input aria-label={`Item ${index + 1} specifications`} placeholder="Specifications" maxLength="500" value={item.specifications} onChange={(e) => setItems((current) => current.map((row, i) => i === index ? { ...row, specifications: e.target.value } : row))} />
@@ -321,9 +330,11 @@ export function ScrapPage() {
   const [selected, setSelected] = useState([]);
   const [remarks, setRemarks] = useState("");
   const [message, setMessage] = useState("");
-  const load = () => Promise.all([getAssetCodes(), getScrapList(), getScrapRequests()]).then(([codes, scrap, requestsList]) => { setAssets(codes.filter((item) => item.status !== "scrap")); setScrapped(scrap); setRequests(requestsList); }).catch((error) => setMessage(error.response?.data?.error || "Could not load scrap records."));
+  const [certificateAttachment, setCertificateAttachment] = useState(undefined);
+  const [profile, setProfile] = useState(null);
+  const load = () => Promise.all([getAssetCodes(), getScrapList(), getScrapRequests(), getCompanyProfile()]).then(([codes, scrap, requestsList, companyProfile]) => { setAssets(codes.filter((item) => item.status !== "scrap")); setScrapped(scrap); setRequests(requestsList); setProfile(companyProfile); }).catch((error) => setMessage(error.response?.data?.error || "Could not load scrap records."));
   useEffect(() => { load(); }, []);
-  const submit = async (event) => { event.preventDefault(); if (!selected.length) { setMessage("Select at least one asset."); return; } try { await submitScrapRequest({ assetCodeIds: selected, reason: remarks.trim() }); setMessage(`${selected.length} asset(s) submitted for approval.`); setSelected([]); setRemarks(""); load(); } catch (e) { setMessage(e.response?.data?.error || "Could not submit scrap request."); } };
+  const submit = async (event) => { event.preventDefault(); if (!selected.length) { setMessage("Select at least one asset."); return; } try { await submitScrapRequest({ assetCodeIds: selected, reason: remarks.trim(), certificateAttachment }); setMessage(`${selected.length} asset(s) submitted for approval.`); setSelected([]); setRemarks(""); setCertificateAttachment(undefined); load(); } catch (e) { setMessage(e.response?.data?.error || "Could not submit scrap request."); } };
   const review = async (request, status) => {
     const verb = status === "approved" ? "approve" : "reject";
     if (!window.confirm(`${verb[0].toUpperCase()}${verb.slice(1)} this scrap request? ${status === "approved" ? "The selected assets will be moved to Scrap Store." : "The request will be marked rejected."}`)) return;
@@ -332,21 +343,22 @@ export function ScrapPage() {
   };
   const visibleRequests = requests.filter((request) => request.status === tab);
   return <>
-    <div className="panel"><div className="list-header"><h2>🗑️ Scrap / Dead Stock</h2><span className="qty-badge">{scrapped.length} in Scrap Store</span></div>
-      <form className="movement-form" onSubmit={submit}><label>Reason for scrap request *<input required maxLength="500" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Condition and reason for scrapping" /></label><button className="danger">Submit for approval</button></form>
+    <div className="panel"><div className="list-header"><h2>🗑️ Scrap / Dead Stock</h2><div className="list-header-actions"><span className="qty-badge">{scrapped.length} in Scrap Store</span><ReportActions title="Scrap / Dead Stock register" /></div></div>
+      <form className="movement-form" onSubmit={submit}><label>Reason for scrap request *<input required maxLength="500" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Condition and reason for scrapping" /></label><label>Dead stock / scrap certificate <small>PDF, JPG, PNG, or WebP · max 2 MB</small><input type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={async (e) => { try { setCertificateAttachment(await readAttachment(e.target.files?.[0], "Certificate")); setMessage(""); } catch (error) { e.target.value = ""; setMessage(error.message); } }} />{certificateAttachment && <span className="attachment-name">Attached: {certificateAttachment.name}</span>}</label><button className="danger">Submit for approval</button></form>
       {message && <p className="msg">{message}</p>}
       <table><thead><tr><th>Select</th><th>Asset code</th><th>Equipment</th><th>Location</th><th>Department</th><th>Status</th><th>Value</th></tr></thead><tbody>
         {assets.map((asset) => <tr key={asset._id}><td><input type="checkbox" aria-label={`Select ${asset.code}`} checked={selected.includes(asset._id)} onChange={() => setSelected((current) => current.includes(asset._id) ? current.filter((id) => id !== asset._id) : [...current, asset._id])} /></td><td>{asset.code}</td><td>{asset.equipment?.name || "—"}</td><td>{asset.location?.name || "—"}</td><td>{asset.department?.code || "—"}</td><td>{asset.status?.replace("_", " ")}</td><td>{money(asset.unitCost)}</td></tr>)}
         {assets.length === 0 && <tr><td colSpan="7">No active assets available.</td></tr>}</tbody></table>
     </div>
     <div className="panel"><div className="list-header"><h2>🕒 Scrap Requests</h2><div className="list-header-actions">{["pending", "approved", "rejected"].map((status) => <button type="button" key={status} className={tab === status ? "primary-btn" : "btn-outline"} onClick={() => setTab(status)}>{status[0].toUpperCase() + status.slice(1)} ({requests.filter((request) => request.status === status).length})</button>)}</div></div>
-      <table><thead><tr><th>Requested</th><th>Assets</th><th>Reason</th><th>Requested by</th><th>Status</th>{user?.role === "Administrator" && <th>Review</th>}</tr></thead><tbody>
-        {visibleRequests.map((request) => <tr key={request._id}><td>{date(request.createdAt)}</td><td>{request.assetCodes?.map((asset) => asset.code).join(", ") || "—"}</td><td>{request.reason}</td><td>{request.requestedBy}</td><td><span className={`status-pill ${request.status === "rejected" ? "inactive" : ""}`}>{request.status}</span></td>{user?.role === "Administrator" && <td>{request.status === "pending" ? <><button className="primary-btn" onClick={() => review(request, "approved")}>Approve</button> <button className="btn-outline" onClick={() => review(request, "rejected")}>Reject</button></> : <span>{request.reviewedBy || "—"}</span>}</td>}</tr>)}
-        {visibleRequests.length === 0 && <tr><td colSpan={user?.role === "Administrator" ? 6 : 5}>No {tab} scrap requests.</td></tr>}
+      <table><thead><tr><th>Requested</th><th>Assets</th><th>Reason</th><th>Requested by</th><th>Certificate</th><th>Status</th>{user?.role === "Administrator" && <th>Review</th>}</tr></thead><tbody>
+        {visibleRequests.map((request) => <tr key={request._id}><td>{date(request.createdAt)}</td><td>{request.assetCodes?.map((asset) => asset.code).join(", ") || "—"}</td><td>{request.reason}</td><td>{request.requestedBy}</td><td>{request.certificateAttachment?.dataUrl ? <a href={request.certificateAttachment.dataUrl} target="_blank" rel="noreferrer">View certificate</a> : "—"}</td><td><span className={`status-pill ${request.status === "rejected" ? "inactive" : ""}`}>{request.status}</span></td>{user?.role === "Administrator" && <td>{request.status === "pending" ? <><button className="primary-btn" onClick={() => review(request, "approved")}>Approve</button> <button className="btn-outline" onClick={() => review(request, "rejected")}>Reject</button></> : <span>{request.reviewedBy || "—"}</span>}</td>}</tr>)}
+        {visibleRequests.length === 0 && <tr><td colSpan={user?.role === "Administrator" ? 7 : 6}>No {tab} scrap requests.</td></tr>}
       </tbody></table></div>
     <div className="panel"><h2>Scrapped Assets</h2><table><thead><tr><th>Asset code</th><th>Equipment</th><th>Remarks</th><th>Value</th><th>Updated</th></tr></thead><tbody>
       {scrapped.map((asset) => <tr key={asset._id}><td>{asset.code}</td><td>{asset.equipment?.name || "—"}</td><td>{asset.remarks || "—"}</td><td>{money(asset.unitCost)}</td><td>{date(asset.updatedAt)}</td></tr>)}
       {scrapped.length === 0 && <tr><td colSpan="5">No scrapped assets.</td></tr>}</tbody></table></div>
+    <section className="pdf-signature-block" aria-label="Required signatures for printed scrap register"><div><div className="signature-line">{profile?.principalSignature && <img src={profile.principalSignature} alt="Principal signature" />}</div><strong>Principal</strong><span>Signature</span></div><div><div className="signature-line">{profile?.hodSignature && <img src={profile.hodSignature} alt="HOD signature" />}</div><strong>HOD</strong><span>Signature</span></div></section>
   </>;
 }
 
