@@ -56,6 +56,7 @@ export const deleteVendor = (id) => api.delete(`/api/vendors/${id}`).then((r) =>
 export const getPurchases = () => api.get("/api/purchases").then((r) => r.data);
 export const addPurchase = (p) => api.post("/api/purchases", p).then((r) => r.data);
 export const deletePurchase = (id) => api.delete(`/api/purchases/${id}`).then((r) => r.data);
+export const downloadPurchaseBill = (id) => api.get(`/api/purchases/${id}/bill`, { responseType: "blob" }).then((r) => r.data);
 
 // ---- Asset Codes ----
 export const getAssetCodes = (params = "") => api.get(`/api/asset-codes${params}`).then((r) => r.data);
@@ -75,6 +76,7 @@ export const getScrapList = () => api.get("/api/scrap").then((r) => r.data);
 export const getScrapRequests = (params = {}) => api.get("/api/scrap/requests", { params }).then((r) => r.data);
 export const submitScrapRequest = (p) => api.post("/api/scrap/requests", p).then((r) => r.data);
 export const reviewScrapRequest = (id, p) => api.patch(`/api/scrap/requests/${id}`, p).then((r) => r.data);
+export const downloadScrapCertificate = (id) => api.get(`/api/scrap/requests/${id}/certificate`, { responseType: "blob" }).then((r) => r.data);
 export const getStockMovements = (params = {}) => api.get("/api/stock-movements", { params }).then((r) => r.data);
 
 // ---- Maintenance ----

@@ -2,9 +2,9 @@ import React, { useState, useRef, useEffect } from "react";
 import { askNLQuery } from "../api";
 
 const SUGGESTIONS = [
-  "Total laptops evlo irukku?",
+  "How many departments are there?",
   "How do I record a new purchase?",
-  "Scrap request approve eppadi pannradhu?",
+  "How do I approve a scrap request?",
 ];
 
 const BotIcon = ({ size = 30 }) => (
@@ -23,7 +23,7 @@ export default function ChatWidget() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([
-    { role: "bot", text: "Hi! Naan Stock Assistant 🤖 — stock details, app use, illa general questions kelunga. Tamil, English, Tanglish ellame okay." },
+    { role: "bot", text: "Hi! I am the Stock Assistant. Ask in English about stock records, app features, permissions, or procedures." },
   ]);
   const endRef = useRef(null);
 
@@ -60,7 +60,7 @@ export default function ChatWidget() {
               <div className="chat-avatar"><BotIcon size={22} /></div>
               <div>
                 <div className="chat-title">Stock Bot</div>
-                <div className="chat-status"><span className="dot" /> Tamil · English · Tanglish</div>
+                <div className="chat-status"><span className="dot" /> English support</div>
               </div>
             </div>
             <button className="icon-btn" onClick={() => setOpen(false)} aria-label="Close chat">✕</button>
@@ -86,7 +86,7 @@ export default function ChatWidget() {
           </div>
 
           <form className="chat-input" onSubmit={(e) => { e.preventDefault(); send(); }}>
-            <input aria-label="Ask the Stock Assistant" maxLength={500} value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Ask about stock, this app, or anything else..." />
+            <input aria-label="Ask the Stock Assistant" maxLength={500} value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Ask an English question about stock or this app..." />
             <button type="submit" disabled={loading}>Send</button>
           </form>
         </div>

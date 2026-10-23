@@ -3,7 +3,7 @@ import {
   addConsumable, addMaintenance, addPowerUnit, addQuotation, deletePowerUnit, deleteQuotation, downloadCsv,
   deleteAssetCode, distributeAssets, getAssetCodes, getConsumables,
   getCompanyProfile, getDepartments, getEquipment, getLegacyStock, getLocations, getMaintenance, getPowerUnits, getPurchases, getQuotations, getScrapList, getScrapRequests, getStockMovements,
-  getVendors, reviewScrapRequest, stockMoveAssets, submitScrapRequest, transferAssets, updateAssetCode, updateConsumable,
+  getVendors, reviewScrapRequest, stockMoveAssets, submitScrapRequest, transferAssets, updateAssetCode, updateConsumable, downloadScrapCertificate,
   updateMaintenance, updatePowerUnit, updateQuotation,
 } from "../api";
 import { useAuth } from "../context/AuthContext";
@@ -335,6 +335,11 @@ export function ScrapPage() {
   const load = () => Promise.all([getAssetCodes(), getScrapList(), getScrapRequests(), getCompanyProfile()]).then(([codes, scrap, requestsList, companyProfile]) => { setAssets(codes.filter((item) => item.status !== "scrap")); setScrapped(scrap); setRequests(requestsList); setProfile(companyProfile); }).catch((error) => setMessage(error.response?.data?.error || "Could not load scrap records."));
   useEffect(() => { load(); }, []);
   const submit = async (event) => { event.preventDefault(); if (!selected.length) { setMessage("Select at least one asset."); return; } try { await submitScrapRequest({ assetCodeIds: selected, reason: remarks.trim(), certificateAttachment }); setMessage(`${selected.length} asset(s) submitted for approval.`); setSelected([]); setRemarks(""); setCertificateAttachment(undefined); load(); } catch (e) { setMessage(e.response?.data?.error || "Could not submit scrap request."); } };
+  const viewCertificate = async (request) => {
+    const tab = window.open("", "_blank");
+    try { const blob = await downloadScrapCertificate(request._id); const url = URL.createObjectURL(blob); if (tab) tab.location.href = url; else window.open(url, "_blank"); setTimeout(() => URL.revokeObjectURL(url), 60000); }
+    catch (error) { if (tab) tab.close(); setMessage(error.response?.data?.error || "Could not open the certificate."); }
+  };
   const review = async (request, status) => {
     const verb = status === "approved" ? "approve" : "reject";
     if (!window.confirm(`${verb[0].toUpperCase()}${verb.slice(1)} this scrap request? ${status === "approved" ? "The selected assets will be moved to Scrap Store." : "The request will be marked rejected."}`)) return;
@@ -352,7 +357,7 @@ export function ScrapPage() {
     </div>
     <div className="panel"><div className="list-header"><h2>🕒 Scrap Requests</h2><div className="list-header-actions">{["pending", "approved", "rejected"].map((status) => <button type="button" key={status} className={tab === status ? "primary-btn" : "btn-outline"} onClick={() => setTab(status)}>{status[0].toUpperCase() + status.slice(1)} ({requests.filter((request) => request.status === status).length})</button>)}</div></div>
       <table><thead><tr><th>Requested</th><th>Assets</th><th>Reason</th><th>Requested by</th><th>Certificate</th><th>Status</th>{user?.role === "Administrator" && <th>Review</th>}</tr></thead><tbody>
-        {visibleRequests.map((request) => <tr key={request._id}><td>{date(request.createdAt)}</td><td>{request.assetCodes?.map((asset) => asset.code).join(", ") || "—"}</td><td>{request.reason}</td><td>{request.requestedBy}</td><td>{request.certificateAttachment?.dataUrl ? <a href={request.certificateAttachment.dataUrl} target="_blank" rel="noreferrer">View certificate</a> : "—"}</td><td><span className={`status-pill ${request.status === "rejected" ? "inactive" : ""}`}>{request.status}</span></td>{user?.role === "Administrator" && <td>{request.status === "pending" ? <><button className="primary-btn" onClick={() => review(request, "approved")}>Approve</button> <button className="btn-outline" onClick={() => review(request, "rejected")}>Reject</button></> : <span>{request.reviewedBy || "—"}</span>}</td>}</tr>)}
+        {visibleRequests.map((request) => <tr key={request._id}><td>{date(request.createdAt)}</td><td>{request.assetCodes?.map((asset) => asset.code).join(", ") || "—"}</td><td>{request.reason}</td><td>{request.requestedBy}</td><td>{request.certificateAttachment?.name ? <button type="button" className="btn-outline" onClick={() => viewCertificate(request)}>View certificate</button> : "—"}</td><td><span className={`status-pill ${request.status === "rejected" ? "inactive" : ""}`}>{request.status}</span></td>{user?.role === "Administrator" && <td>{request.status === "pending" ? <><button className="primary-btn" onClick={() => review(request, "approved")}>Approve</button> <button className="btn-outline" onClick={() => review(request, "rejected")}>Reject</button></> : <span>{request.reviewedBy || "—"}</span>}</td>}</tr>)}
         {visibleRequests.length === 0 && <tr><td colSpan={user?.role === "Administrator" ? 7 : 6}>No {tab} scrap requests.</td></tr>}
       </tbody></table></div>
     <div className="panel"><h2>Scrapped Assets</h2><table><thead><tr><th>Asset code</th><th>Equipment</th><th>Remarks</th><th>Value</th><th>Updated</th></tr></thead><tbody>
